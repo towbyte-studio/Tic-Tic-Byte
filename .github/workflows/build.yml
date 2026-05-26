@@ -1,0 +1,93 @@
+name: Build HTML Android TV APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install Capacitor
+        run: |
+          npm install -g @capacitor/cli
+          npm install @capacitor/core @capacitor/android --force
+
+      - name: Setup Web Files
+        run: |
+          mkdir -p dist
+
+          # সব HTML/CSS/JS file dist এ copy
+          cp -r * dist/ || true
+
+          # unnecessary file remove
+          rm -rf dist/.git
+          rm -rf dist/android
+          rm -rf dist/node_modules
+
+      - name: Create Capacitor Config
+        run: |
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.ec.tvgame",
+            "appName": "Tic Tic Byte",
+            "webDir": "dist",
+            "bundledWebRuntime": false,
+            "server": {
+              "hostname": "localhost",
+              "androidScheme": "https",
+              "cleartext": true
+            }
+          }
+          EOF
+
+      - name: Add Android Platform
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Configure Android TV Support
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          sed -i '/<application/i\
+          <uses-feature android:name="android.software.leanback" android:required="false"/>\
+          <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>\
+          <uses-permission android:name="android.permission.INTERNET"/>' $MANIFEST
+
+      - name: Add App Icon (Optional)
+        run: |
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+
+          if [ -f "logo.png" ]; then
+            cp logo.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          fi
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-TV-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
